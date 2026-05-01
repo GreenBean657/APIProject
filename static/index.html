@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Items</title>
+</head>
+<body>
+  <h1>Items</h1>
+
+  <h2>Add Item</h2>
+  <label>Name: <input type="text" id="name"></label><br>
+  <label>Description: <input type="text" id="description"></label><br>
+  <button onclick="createItem()">Create</button>
+
+  <h2>Item List</h2>
+  <div id="items"></div>
+
+  <script>
+    const API = "/items";
+
+    async function loadItems() {
+      const res = await fetch(API);
+      const items = await res.json();
+      const container = document.getElementById("items");
+      container.innerHTML = "";
+
+      if (items.length === 0) {
+        container.textContent = "No items.";
+        return;
+      }
+
+      for (const item of items) {
+        const div = document.createElement("div");
+        div.id = "item-" + item.id;
+
+        const info = document.createElement("span");
+        info.id = "info-" + item.id;
+        info.textContent = `[${item.id}] ${item.name} — ${item.description ?? ""}`;
+
+        const editBtn = document.createElement("button");
+        editBtn.textContent = "Edit";
+        editBtn.onclick = () => showEditForm(item);
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "Delete";
+        deleteBtn.onclick = () => deleteItem(item.id);
+
+        div.appendChild(info);
+        div.appendChild(document.createTextNode(" "));
+        div.appendChild(editBtn);
+        div.appendChild(document.createTextNode(" "));
+        div.appendChild(deleteBtn);
+        container.appendChild(div);
+        container.appendChild(document.createElement("br"));
+      }
+    }
+
+    function showEditForm(item) {
+      const div = document.getElementById("item-" + item.id);
+      // Remove existing edit form if present
+      const existing = document.getElementById("edit-form-" + item.id);
+      if (existing) { existing.remove(); return; }
+
+      const form = document.createElement("div");
+      form.id = "edit-form-" + item.id;
+
+      const nameInput = document.createElement("input");
+      nameInput.type = "text";
+      nameInput.value = item.name;
+
+      const descInput = document.createElement("input");
+      descInput.type = "text";
+      descInput.value = item.description ?? "";
+
+      const saveBtn = document.createElement("button");
+      saveBtn.textContent = "Save";
+      saveBtn.onclick = () => updateItem(item.id, nameInput.value, descInput.value);
+
+      const cancelBtn = document.createElement("button");
+      cancelBtn.textContent = "Cancel";
+      cancelBtn.onclick = () => form.remove();
+
+      form.appendChild(document.createTextNode("Name: "));
+      form.appendChild(nameInput);
+      form.appendChild(document.createTextNode(" Desc: "));
+      form.appendChild(descInput);
+      form.appendChild(document.createTextNode(" "));
+      form.appendChild(saveBtn);
+      form.appendChild(document.createTextNode(" "));
+      form.appendChild(cancelBtn);
+
+      div.appendChild(document.createElement("br"));
+      div.appendChild(form);
+    }
+
+    async function createItem() {
+      const name = document.getElementById("name").value.trim();
+      const description = document.getElementById("description").value.trim();
+      if (!name) { alert("Name is required."); return; }
+
+      await fetch(API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: description || null })
+      });
+
+      document.getElementById("name").value = "";
+      document.getElementById("description").value = "";
+      loadItems();
+    }
+
+    async function updateItem(id, name, description) {
+      if (!name.trim()) { alert("Name is required."); return; }
+
+      await fetch(`${API}/${id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name.trim(), description: description.trim() || null })
+      });
+
+      loadItems();
+    }
+
+    async function deleteItem(id) {
+      if (!confirm("Delete this item?")) return;
+      await fetch(`${API}/${id}`, { method: "DELETE" });
+      loadItems();
+    }
+
+    loadItems();
+  </script>
+</body>
+</html>
