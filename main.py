@@ -4,7 +4,9 @@ from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, create_engine, select
 import os
 from contextlib import asynccontextmanager
-from dbformats import SQLModel, ItemCreate, ItemRead, Item, init_db
+from dbformats import ItemCreate, ItemRead, Item, init_db
+
+from pytorch_basics import load_model, predict, PredictionRequest
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
@@ -12,10 +14,14 @@ DATABASE_URL = os.getenv(
 )
 engine = create_engine(DATABASE_URL, echo=True)
 
+ml_state = {}
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db(engine)
+    ml_state["model"] = load_model()
     yield
+    ml_state.clear()
 
 app = FastAPI(lifespan=lifespan)
 
@@ -71,5 +77,15 @@ def items_delete(item_id: int):
         session.delete(item)
         session.commit()
 
-# Mount static files LAST so API routes take priority
+@app.post("/predict")
+def predict_endpoint(req: PredictionRequest):
+    model = ml_state.get("model")
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    try:
+        return predict(model, req)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

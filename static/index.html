@@ -14,6 +14,14 @@
   <h2>Item List</h2>
   <div id="items"></div>
 
+  <h2>Iris Prediction</h2>
+  <label>Sepal length: <input type="number" step="0.1" id="f0" value="5.1"></label><br>
+  <label>Sepal width:  <input type="number" step="0.1" id="f1" value="3.5"></label><br>
+  <label>Petal length: <input type="number" step="0.1" id="f2" value="1.4"></label><br>
+  <label>Petal width:  <input type="number" step="0.1" id="f3" value="0.2"></label><br>
+  <button onclick="predictIris()">Predict</button>
+  <div id="prediction-result"></div>
+
   <script>
     const API = "/items";
 
@@ -124,6 +132,31 @@
       if (!confirm("Delete this item?")) return;
       await fetch(`${API}/${id}`, { method: "DELETE" });
       loadItems();
+    }
+
+    async function predictIris() {
+      const features = ["f0", "f1", "f2", "f3"].map(id => parseFloat(document.getElementById(id).value));
+      const out = document.getElementById("prediction-result");
+      if (features.some(Number.isNaN)) {
+        out.textContent = "Please enter all four numeric features.";
+        return;
+      }
+
+      const res = await fetch("/predict", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ features })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        out.textContent = `Error: ${err.detail ?? res.status}`;
+        return;
+      }
+
+      const data = await res.json();
+      const pct = (data.confidence * 100).toFixed(2);
+      out.textContent = `Prediction: ${data.prediction} (confidence ${pct}%)`;
     }
 
     loadItems();
