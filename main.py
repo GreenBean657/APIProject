@@ -2,26 +2,26 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlmodel import Session, create_engine, select
+from pydantic import BaseModel
 import os
+import requests
 from contextlib import asynccontextmanager
 from dbformats import ItemCreate, ItemRead, Item, init_db
-
-from pytorch_basics import load_model, predict, PredictionRequest
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:postgres@db:5432/items"
 )
+MODEL_SERVICE_URL = os.getenv("MODEL_SERVICE_URL", "http://model-service:8001")
+
 engine = create_engine(DATABASE_URL, echo=True)
 
-ml_state = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db(engine)
-    ml_state["model"] = load_model()
     yield
-    ml_state.clear()
+
 
 app = FastAPI(lifespan=lifespan)
 
@@ -33,10 +33,12 @@ app.add_middleware( # AI ASSISTED
     allow_headers=["*"],
 )
 
+
 @app.get("/items", status_code=200, response_model=list[ItemRead])
 def items_get():
     with Session(engine) as session:
         return session.exec(select(Item)).all()
+
 
 @app.get("/items/{item_id}", response_model=ItemRead)
 def get_item(item_id: int):
@@ -46,6 +48,7 @@ def get_item(item_id: int):
             raise HTTPException(status_code=404, detail="Item not found")
         return item
 
+
 @app.post("/items", status_code=201, response_model=ItemRead)
 def items_push(payload: ItemCreate):
     with Session(engine) as session:
@@ -54,6 +57,7 @@ def items_push(payload: ItemCreate):
         session.commit()
         session.refresh(item)
         return item
+
 
 @app.put("/items/{item_id}", response_model=ItemRead)
 def items_put(item_id: int, payload: ItemCreate):
@@ -68,6 +72,7 @@ def items_put(item_id: int, payload: ItemCreate):
         session.refresh(item)
         return item
 
+
 @app.delete("/items/{item_id}", status_code=204)
 def items_delete(item_id: int):
     with Session(engine) as session:
@@ -77,15 +82,25 @@ def items_delete(item_id: int):
         session.delete(item)
         session.commit()
 
+
+class PredictionRequest(BaseModel):
+    features: list[float]
+
+
 @app.post("/predict")
 def predict_endpoint(req: PredictionRequest):
-    model = ml_state.get("model")
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
     try:
-        return predict(model, req)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        response = requests.post(
+            f"{MODEL_SERVICE_URL}/predict",
+            json={"features": req.features},
+            timeout=10,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.ConnectionError:
+        raise HTTPException(status_code=503, detail="Model service unavailable")
+    except requests.exceptions.HTTPError as e:
+        raise HTTPException(status_code=e.response.status_code, detail=e.response.json().get("detail", str(e)))
 
 
 app.mount("/", StaticFiles(directory="static", html=True), name="static")

@@ -27,8 +27,28 @@ PASSWORD=<PASS>
 ```
 
 ### Architecture:
-Front End (Makes Request to API) ↔ API (Handles Request, Interacts with DB) ↔ Database (Stores Data)
-Database (Makes Modifications) > API (Sends Response) > Front End (Updates UI)
+
+```
+Client
+  │
+  ▼
+API (:8000)  ──────────────────────────────────────────────────────────────────────
+  │                        │                                   │
+  │  GET/POST /items       │  POST /predict                    │  /health checks
+  ▼                        ▼                                   ▼
+Database (:5432)    Model Service (:8001)              Model Service (:8001)
+(PostgreSQL)          (PyTorch Iris                     GET /health
+                       Classifier)
+                          │
+                          ▼
+                      prediction
+                      (JSON response)
+```
+
+Request flow:
+- `Client → API (:8000) → Database (:5432)` for CRUD operations
+- `Client → API (:8000) → Model Service (:8001) → prediction` for ML inference
+- The client never talks directly to the model container
 
 
 ### API: 
@@ -41,8 +61,8 @@ Database (Makes Modifications) > API (Sends Response) > Front End (Updates UI)
 | DELETE  | /items/{id} | Delete an item by ID, or 404 if not found       | 200 / 404       |    
 | PREDICT | /predict    | Predict with the iris model                     | 503 / 400 / 200 |
 
-### L3: PyTorch Model in Your App:
-Model is now implemented, and automatically trains on startup.
+### L3/L4: PyTorch Model Service:
+The model runs in its own container (`model_service/`). On startup it trains the Iris classifier if no saved weights are found, then serves predictions over HTTP. The main API proxies `/predict` to this service — it no longer imports PyTorch directly.
 
 ```python
 class SimpleClassifier(nn.Module):
@@ -76,6 +96,8 @@ curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -
   }
 }
 ```
+
+
 # AI Disclaimers
 index.html is largely AI assisted.
 dbformats was slightly AI assisted in terms of how to create the items.

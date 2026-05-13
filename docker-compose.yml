@@ -13,16 +13,30 @@ services:
       timeout: 5s
       retries: 5
 
+  model-service:
+    build: ./model_service
+    ports:
+      - "8001:8001"
+    volumes:
+      - modeldata:/app/model
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   web:
     build: .
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/items
-    volumes:
-      - modeldata:/app/models
+      MODEL_SERVICE_URL: http://model-service:8001
     depends_on:
       db:
+        condition: service_healthy
+      model-service:
         condition: service_healthy
 
 volumes:
